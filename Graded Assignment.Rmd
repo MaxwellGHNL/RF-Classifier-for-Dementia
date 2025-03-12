@@ -1,0 +1,264 @@
+---
+title: "Application of Prediction Model and Machine Learing"
+author: "Maxwell Agyemang and Thomas Bouwmelster"
+date: "2024-11-14"
+output: html_document
+---
+
+```{r}
+install.packages("corrr")
+install.packages("ggcorrplot")
+install.packages("FactoMineR")
+install.packages("factoextra")
+install.packages("ggfortify")
+install.packages("randomForest")
+install.packages("datasets")
+install.packages("caret")
+install.packages("tidyverse")
+install.packages("readr")
+install.packages("tidyr")
+install.packages("car")
+install.packages("ggplot2")
+install.packages("dplyr")
+install.packages("rpart.plot")ss
+```
+
+```{r}
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(car)
+library(ggplot2)
+library(corrr)
+library(ggcorrplot)
+library(ggcorrplot)
+library(FactoMineR)
+library(factoextra)
+library(ggfortify)
+library(randomForest)
+library(datasets)
+library(caret)
+library(rpart.plot)
+```
+
+```{r}
+# First, download train and test datasets. Then, click on them under 'Files' and load them into the global environment. 
+# Now renaming train dataset
+train <- data_train
+head(train)
+```
+
+```{r}
+# Removing the missing values written as '-99' and '-999', as these values represent missing values.
+train_filter <- train %>% filter_all(all_vars(. != -99 & . != -999))
+head(train_filter)
+```
+
+```{r}
+# Only selecting numeric variables for PCA and normalizing all included variables
+train_num <- select_if(train_filter,is.numeric)
+train_num_norm <- scale(train_num)
+```
+
+```{r}
+# Performing PCA with the normalized numeric data
+pca_train_num_norm <- prcomp(train_num_norm)
+summary(pca_train_num_norm)
+
+# Creating a scree plot including the variables with the highest explained variances
+fviz_eig(pca_train_num_norm, addlabels = TRUE)
+```
+
+```{r}
+# Creating PCA scatter plots with PC1 and PC2 on the x-axis and y-axis, and respectively distinguished by nothing, gender, admission_planned, cpr, copd, diabetes, and delirium_subtype
+autoplot(pca_train_num_norm)
+
+autoplot(pca_train_num_norm, data = train, color = "gender") +
+  ggtitle("PCA Scatter plot with PC1 and PC2 distinguished by Gender")
+
+autoplot(pca_train_num_norm,data=train,color="admission_planned") +
+  ggtitle("PCA Scatter plot with PC1 and PC2 distinguished by Planned Admission")
+
+autoplot(pca_train_num_norm,data=train,color="cpr")
+
+autoplot(pca_train_num_norm,data=train,color="copd")
+
+autoplot(pca_train_num_norm,data=train,color="diabetes")
+
+autoplot(pca_train_num_norm,data=train,color="delirium_subtype")
+```
+
+```{r}
+# Creating a new dataset with 5 common features
+train5 <- train_filter %>%
+  select(age_on_admission,lab_urea_max_24h,apacheII_score_24h,type_of_patient,suspected_and_confirmed_infection,delirium_subtype)
+head(train5)
+```
+
+```{r}
+# Fitting a Random Forest model with the 5 features
+rf5 <- randomForest(delirium_subtype~. ,data=train5,proximity=TRUE)
+print(rf5)
+```
+
+```{r}
+# Predicting the model with the 5 features
+p5 <- predict(rf5, train5)
+confusionMatrix(p5, train5$ delirium_subtype)
+```
+
+```{r}
+# Looking how much the 5 features contribute to the outcome
+
+# Getting feature importance
+importance_data5 <- importance(rf5)
+
+# Converting to data frame for easier plotting
+importance_df5 <- data.frame (Feature = rownames(importance_data5), Importance = importance_data5 [, 1])
+
+# Creating a bar plot of feature importance
+ggplot(importance_df5, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +
+  labs(title = "Feature Importance in Random Forest", 
+       x = "Features", 
+       y = "Importance") +
+  theme_minimal()
+
+```
+
+```{r}
+# Renaming the test dataset
+test <- data_test
+head(test)
+```
+
+```{r}
+# Removing the missing values written as '-99' and '-999'.
+test_filter <- test %>% filter_all(all_vars(. != -99 & . != -999))
+head(test_filter)
+```
+
+```{r}
+# Creating the test dataset with 5 features
+test5 <- test_filter %>%
+  select(age_on_admission,lab_urea_max_24h,type_of_patient,apacheII_score_24h,suspected_and_confirmed_infection,delirium_subtype)
+head(test5)
+```
+
+```{r}
+# Predicting the model with 5 features on the test dataset with 5 features
+ptest5 <- predict(rf5, test5)
+confusionMatrix(ptest5, test_filter$ delirium_subtype)
+```
+
+Now, we look at the entire dataset. The method applied to create our final model is the Backward Approach.
+
+```{r}
+# Fitting a Random Forest model with all features
+rf_all <- randomForest(delirium_subtype~. ,data=train_filter,proximity=TRUE)
+print(rf_all)
+```
+
+```{r}
+# Predicting the model with all features
+p_all <- predict(rf_all, train_filter)
+confusionMatrix(p_all, train_filter$ delirium_subtype)
+```
+
+```{r}
+# Looking at features that contribute the most to the outcome
+
+# Getting feature importance
+importance_data_all <- importance(rf_all)
+
+# Converting to data frame for easier plotting
+importance_df_all <- data.frame (Feature = rownames(importance_data_all), Importance = importance_data_all [, 1])
+
+# Only covering the top 25 most important features
+
+importance_df_top25 <- importance_df_all[order(-importance_df_all$Importance), ][1:25, ]
+
+# Creating a bar plot of feature importance
+ggplot(importance_df_top25, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +
+  labs(title = "Importance of top 25 features in Random Forest", 
+       x = "Features", 
+       y = "Importance") +
+  theme_minimal()
+```
+
+```{r}
+# Predicting the model with all features on the test dataset with all features
+ptest_all <- predict(rf_all, test_filter)
+confusionMatrix(ptest_all, test_filter$ delirium_subtype)
+```
+
+Adjusting the model to improve sensitivity and specificity. This is mostly us trying and learning to introduce class weights into the Random Forest model; we did not include this in our report.
+
+```{r}
+# Adjusting class weights by dividing 1 by the number of participants per delirium class. The penalty on misclassifying smaller classes is stricter, and the weight of these classes is larger.
+class_weights <- c(0.0003, 0.0022, 0.0035, 0.0055)
+
+# Adjusting these weights based on your requirements
+names(class_weights) <- levels(train_filter$delirium_subtype)
+
+# Training the Random Forest model with adjusted class weights
+rf_all_weighted <- randomForest(delirium_subtype ~ ., data = train_filter, proximity = TRUE, classwt = class_weights)
+
+# Predicting the model with adjusted weights
+p_all_weighted <- predict(rf_all_weighted, train_filter)
+confusionMatrix(p_all_weighted, train_filter$ delirium_subtype)
+```
+
+```{r}
+# Predicting the model with adjusted weights on the test dataset
+ptest_all_weighted <- predict(rf_all_weighted, test_filter)
+confusionMatrix(ptest_all_weighted, test_filter$ delirium_subtype)
+```
+
+Creating a final model with 20 of the most important features.
+
+```{r}
+# Creating a new dataset by selecting the 20 most important features from the train dataset
+train20 <- train_filter %>%
+  select(sedative_use, type_of_coma, morphine_dose, saps_score_24h, apacheII_score_24h, lab_bicarb_max_24h, lab_urea_max_24h, lab_bicarb_min_24h, lab_pao2fio2_24h, lab_throm_max_24h, lab_aado2, lab_throm_min_24h, age_on_admission, syst_max_4h, lab_creat_max_24h, lab_alb_max_24h, type_of_patient, bsm_spo2_diff, bsm_abpm_strt, weight, delirium_subtype)
+head(train20)
+```
+
+```{r}
+# Fitting a Random Forest model
+rf20 <- randomForest(delirium_subtype~. ,data=train20,proximity=TRUE)
+print(rf20)
+```
+
+```{r}
+# Predicting the model with the 20 features
+p20 <- predict(rf20, train20)
+confusionMatrix(p20, train20$ delirium_subtype)
+```
+
+```{r}
+# Creating new dataset with the 20 important variables
+test20 <- test_filter %>%
+  select(sedative_use, type_of_coma, morphine_dose, saps_score_24h, apacheII_score_24h, lab_bicarb_max_24h, lab_urea_max_24h, lab_bicarb_min_24h, lab_pao2fio2_24h, lab_throm_max_24h, lab_aado2, lab_throm_min_24h, age_on_admission, syst_max_4h, lab_creat_max_24h, lab_alb_max_24h, type_of_patient, bsm_spo2_diff, bsm_abpm_strt, weight, delirium_subtype)
+head(test20)
+```
+
+```{r}
+# Predicting the model with the 20 important variable on the test dataset with the 20 important variables
+ptest20 <- predict(rf20, test20)
+confusionMatrix(ptest20, test20$ delirium_subtype)
+```
+
+Making final model.
+
+```{r}
+# Saving the svm model; to reduce file size, please only save the 'finalModel'
+final_rf <- rf20
+
+# Saving final model as .RDS file (NOT as .RData file)
+saveRDS(final_rf, file = "final.rds")
+```
